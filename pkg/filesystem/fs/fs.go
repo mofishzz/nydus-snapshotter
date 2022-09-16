@@ -117,6 +117,7 @@ type Filesystem struct {
 	vpcRegistry          bool
 	mode                 Mode
 	imageMode            ImageMode
+	cas                  map[string]string
 }
 
 // NewFileSystem initialize Filesystem instance
@@ -124,6 +125,7 @@ type Filesystem struct {
 // can mount many Rafs/Erofs file systems
 func NewFileSystem(ctx context.Context, opt ...NewFSOpt) (*Filesystem, error) {
 	var fs Filesystem
+	fs.cas = make(map[string]string)
 	for _, o := range opt {
 		err := o(&fs)
 		if err != nil {
@@ -561,6 +563,27 @@ func (fs *Filesystem) Mount(snapshotID string, labels map[string]string) (err er
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("failed to verify signature of daemon %s", d.ID))
 	}
+
+	outputImage := filepath.Join("/var/cache/nydus-rs", snapshotID+"_image.boot")
+	if _, ok := fs.cas[snapshotID]; !ok {
+		options := []string{
+			"cas",
+			"--bootstrap", bootstrap,
+			"--output", outputImage,
+			"--log-level", d.LogLevel,
+		}
+		cmd := exec.Command(fs.nydusImageBinaryPath, options...)
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
+		log.L.Infof("nydus image command %v", options)
+		err = cmd.Run()
+		if err != nil {
+			return errors.Wrap(err, "cas nydus image")
+		}
+		fs.cas[snapshotID] = outputImage
+	}
+	d.CasPath = outputImage
+
 	err = fs.mount(d, labels)
 	if err != nil {
 		log.L.Errorf("failed to mount %s, %v", d.MountPoint(), err)
@@ -668,7 +691,32 @@ func (fs *Filesystem) MountPoint(snapshotID string) (string, error) {
 }
 
 func (fs *Filesystem) BootstrapFile(id string) (string, error) {
-	return daemon.GetBootstrapFile(fs.SnapshotRoot(), id)
+	//return daemon.GetBootstrapFile(fs.SnapshotRoot(), id)
+
+	source, err := daemon.GetBootstrapFile(fs.SnapshotRoot(), id)
+	if err != nil {
+		return source, err
+	} else {
+		outputImage := filepath.Join("/var/cache/nydus-rs", id+"_image.boot")
+		if _, ok := fs.cas[id]; !ok {
+			options := []string{
+				"cas",
+				"--bootstrap", source,
+				"--output", outputImage,
+				"--log-level", fs.logLevel,
+			}
+			cmd := exec.Command(fs.nydusImageBinaryPath, options...)
+			cmd.Stderr = os.Stderr
+			cmd.Stdout = os.Stdout
+			log.L.Infof("nydus image command %v", options)
+			err = cmd.Run()
+			if err != nil {
+				return source, errors.Wrap(err, "cas nydus image")
+			}
+			fs.cas[id] = outputImage
+		}
+		return outputImage, err
+	}
 }
 
 func (fs *Filesystem) NewDaemonConfig(labels map[string]string, snapshotID string) (config.DaemonConfig, error) {

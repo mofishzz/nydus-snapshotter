@@ -16,7 +16,7 @@ func Mount(bootstrapPath, fsID, mountPoint string) error {
 	mount := unix.Mount
 
 	opts := "fsid=" + fsID
-	logrus.Infof("Mount erofs to %s with options %s", mountPoint, opts)
+	logrus.Infof("Mount erofs from %s to %s with options %s", bootstrapPath, mountPoint, opts)
 	if err := mount("erofs", mountPoint, "erofs", 0, opts); err != nil {
 		return errors.Wrapf(err, "failed to mount erofs")
 	}

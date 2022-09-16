@@ -51,6 +51,7 @@ type Daemon struct {
 	RootMountPoint   *string
 	CustomMountPoint *string
 	nydusdThreadNum  int
+	CasPath          string
 
 	// client will be rebuilt on Reconnect, skip marshal/unmarshal
 	client nydussdk.Interface `json:"-"`
@@ -108,6 +109,9 @@ func (d *Daemon) OldMountPoint() string {
 }
 
 func (d *Daemon) BootstrapFile() (string, error) {
+	if d.CasPath != "" {
+		return d.CasPath, nil
+	}
 	return GetBootstrapFile(d.SnapshotDir, d.SnapshotID)
 }
 
